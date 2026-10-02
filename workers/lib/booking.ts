@@ -46,12 +46,18 @@ export async function holdSeat(
   userId: string,
 ): Promise<HoldOutcome> {
   const section = sectionOf(seatId);
-  const holdId = crypto.randomUUID();
   const expiresAt = Date.now() + HOLD_DURATION_MS;
 
   const userHold = userHoldFor(env, eventId, userId);
-  const reserved = await userHold.tryReserve(holdId, seatId, expiresAt, MAX_HOLDS_PER_USER);
+  const reserved = await userHold.tryReserve(
+    crypto.randomUUID(),
+    seatId,
+    expiresAt,
+    MAX_HOLDS_PER_USER,
+  );
   if (!reserved.ok) return { ok: false, reason: "too_many_holds" };
+  // Either the fresh id, or the id of a hold this user already has on the seat.
+  const holdId = reserved.holdId;
 
   const seatResult = await shardFor(env, eventId, section).holdSeat(
     seatId,
@@ -65,7 +71,11 @@ export async function holdSeat(
     return { ok: false, reason: seatResult.reason ?? "unavailable" };
   }
 
-  return { ok: true, holdId, expiresAt: seatResult.expiresAt! };
+  // The shard is the source of truth: if it already had this user's hold
+  // under another id, drop the slot we just reserved and hand back its id.
+  if (seatResult.holdId !== holdId) await userHold.release(holdId);
+
+  return { ok: true, holdId: seatResult.holdId!, expiresAt: seatResult.expiresAt! };
 }
 
 export async function releaseHold(

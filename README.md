@@ -22,6 +22,16 @@ Install the dependencies:
 npm install
 ```
 
+### Secrets
+
+Admission tokens are signed with `ADMISSION_TOKEN_SECRET`. For local development,
+copy `.dev.vars.example` to `.dev.vars` and set a value. Before deploying, set it
+once with:
+
+```bash
+npx wrangler secret put ADMISSION_TOKEN_SECRET
+```
+
 ### Development
 
 Start the development server with HMR:

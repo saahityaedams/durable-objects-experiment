@@ -8,8 +8,14 @@
 	"compatibility_date": "2026-08-25",
 	"main": "./workers/app.ts",
 	"vars": {
-		"VALUE_FROM_CLOUDFLARE": "Hello from Cloudflare",
-		"ADMISSION_TOKEN_SECRET": "dev-only-change-me-in-production"
+		"VALUE_FROM_CLOUDFLARE": "Hello from Cloudflare"
+	},
+	/**
+	 * Secrets: set locally in .dev.vars (see .dev.vars.example) and in
+	 * production with `wrangler secret put ADMISSION_TOKEN_SECRET`.
+	 */
+	"secrets": {
+		"required": ["ADMISSION_TOKEN_SECRET"]
 	},
 	"observability": {
 		"enabled": true

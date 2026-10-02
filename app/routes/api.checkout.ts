@@ -6,8 +6,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const { eventId } = params;
   const { env } = context.get(cloudflareContext);
 
-  const body = (await request.json()) as { userId?: string; seatId?: string; holdId?: string };
-  if (!body.userId || !body.seatId || !body.holdId) {
+  const body = (await request.json().catch(() => null)) as {
+    userId?: string;
+    seatId?: string;
+    holdId?: string;
+  } | null;
+  if (!body?.userId || !body.seatId || !body.holdId) {
     return Response.json({ ok: false }, { status: 400 });
   }
 

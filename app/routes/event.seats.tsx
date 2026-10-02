@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLoaderData, useNavigate, useParams, useSearchParams } from "react-router";
 import type { Route } from "./+types/event.seats";
 import { listSeats } from "../../workers/lib/booking";
@@ -38,7 +38,6 @@ export default function EventSeats() {
   const [seats, setSeats] = useState(initialSeats);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
-  const userId = useMemo(() => getOrCreateUserId(), []);
 
   const token =
     searchParams.get("token") ??
@@ -52,8 +51,10 @@ export default function EventSeats() {
     if (token) sessionStorage.setItem(`admission:${eventId}`, token);
   }, [hasValidToken, token, eventId, navigate]);
 
+  // The user id lives in localStorage, so it's only read from handlers and
+  // effects — never during render, which also runs on the server.
   async function refresh() {
-    const res = await fetch(`/api/events/${eventId}/seats?userId=${userId}`);
+    const res = await fetch(`/api/events/${eventId}/seats?userId=${getOrCreateUserId()}`);
     if (res.ok) {
       const data = (await res.json()) as { seats: typeof initialSeats };
       setSeats(data.seats);
@@ -73,19 +74,33 @@ export default function EventSeats() {
       const res = await fetch(`/api/events/${eventId}/seats/${seatId}/hold`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, admissionToken: token }),
+        body: JSON.stringify({ userId: getOrCreateUserId(), admissionToken: token }),
       });
-      const data = (await res.json()) as { ok: boolean; reason?: string; holdId?: string };
-      if (!res.ok || !data.ok) {
+      const data = (await res.json().catch(() => null)) as {
+        ok: boolean;
+        reason?: string;
+        holdId?: string;
+      } | null;
+      if (data?.reason === "not_admitted" || (data?.reason === "bad_request" && !token)) {
+        // Admission expired (or was never granted): back to the waiting room.
+        sessionStorage.removeItem(`admission:${eventId}`);
+        navigate(`/event/${eventId}`, { replace: true });
+        return;
+      }
+      if (!res.ok || !data?.ok) {
         setError(
-          data.reason === "too_many_holds"
+          data?.reason === "too_many_holds"
             ? "You already have the max number of seats on hold at once."
-            : "That seat was just taken — pick another.",
+            : data?.reason === "unavailable" || data?.reason === "already_booked"
+              ? "That seat was just taken — pick another."
+              : "Something went wrong holding that seat — please try again.",
         );
         await refresh();
         return;
       }
       navigate(`/event/${eventId}/checkout?seatId=${seatId}&holdId=${data.holdId}`);
+    } catch {
+      setError("Something went wrong holding that seat — please try again.");
     } finally {
       setPending(null);
     }

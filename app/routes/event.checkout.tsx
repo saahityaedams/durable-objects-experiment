@@ -8,18 +8,24 @@ export default function EventCheckout() {
   const navigate = useNavigate();
   const seatId = searchParams.get("seatId");
   const holdId = searchParams.get("holdId");
-  const [status, setStatus] = useState<"idle" | "paying" | "done" | "error">("idle");
+  // "expired" is terminal (the hold is gone); "failed" is retryable.
+  const [status, setStatus] = useState<"idle" | "paying" | "done" | "expired" | "failed">("idle");
 
   async function pay() {
     setStatus("paying");
-    const userId = getOrCreateUserId();
-    const res = await fetch(`/api/events/${eventId}/checkout`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, seatId, holdId }),
-    });
-    const data = (await res.json()) as { ok: boolean };
-    setStatus(data.ok ? "done" : "error");
+    try {
+      const userId = getOrCreateUserId();
+      const res = await fetch(`/api/events/${eventId}/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, seatId, holdId }),
+      });
+      const data = (await res.json().catch(() => null)) as { ok: boolean } | null;
+      if (data?.ok) setStatus("done");
+      else setStatus(res.status === 409 ? "expired" : "failed");
+    } catch {
+      setStatus("failed");
+    }
   }
 
   if (!seatId || !holdId) {
@@ -39,7 +45,7 @@ export default function EventCheckout() {
         <div className="mt-6 rounded bg-green-100 p-4 text-green-800">
           Booked! Seat {seatId} is confirmed.
         </div>
-      ) : status === "error" ? (
+      ) : status === "expired" ? (
         <div className="mt-6 rounded bg-red-100 p-4 text-red-800">
           Your hold expired before payment completed.{" "}
           <button className="underline" onClick={() => navigate(`/event/${eventId}/seats`)}>
@@ -48,13 +54,20 @@ export default function EventCheckout() {
           .
         </div>
       ) : (
-        <button
-          onClick={pay}
-          disabled={status === "paying"}
-          className="mt-6 rounded bg-orange-600 px-4 py-2 font-semibold text-white hover:bg-orange-700 disabled:opacity-50"
-        >
-          {status === "paying" ? "Processing…" : "Confirm & Pay"}
-        </button>
+        <>
+          {status === "failed" && (
+            <p className="mt-6 rounded bg-red-100 p-2 text-red-700">
+              Payment didn't go through — your seat is still held, please try again.
+            </p>
+          )}
+          <button
+            onClick={pay}
+            disabled={status === "paying"}
+            className="mt-6 rounded bg-orange-600 px-4 py-2 font-semibold text-white hover:bg-orange-700 disabled:opacity-50"
+          >
+            {status === "paying" ? "Processing…" : "Confirm & Pay"}
+          </button>
+        </>
       )}
     </main>
   );

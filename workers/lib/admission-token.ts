@@ -47,11 +47,20 @@ export async function verifyAdmissionToken(
   const [body, signature] = token.split(".");
   if (!body || !signature) return null;
 
+  // Tokens are attacker-controlled input: malformed base64 must read as
+  // "invalid", not throw.
+  let signatureBytes: ReturnType<typeof fromBase64Url>;
+  try {
+    signatureBytes = fromBase64Url(signature);
+  } catch {
+    return null;
+  }
+
   const key = await hmacKey(secret);
   const valid = await crypto.subtle.verify(
     "HMAC",
     key,
-    fromBase64Url(signature),
+    signatureBytes,
     new TextEncoder().encode(body),
   );
   if (!valid) return null;

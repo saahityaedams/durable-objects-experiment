@@ -33,6 +33,7 @@ export interface SeatView {
 interface HoldResult {
   ok: boolean;
   reason?: "not_found" | "unavailable" | "already_booked";
+  holdId?: string;
   expiresAt?: number;
 }
 
@@ -133,7 +134,14 @@ export class SeatShard extends DurableObject<Env> {
 
     const currentlyHeld =
       seat.status === "held" && seat.hold_expires_at !== null && seat.hold_expires_at > now;
-    if (currentlyHeld) return { ok: false, reason: "unavailable" };
+    if (currentlyHeld) {
+      // Re-selecting a seat you already hold returns the existing hold, so
+      // the user can get back to checkout instead of being told it's taken.
+      if (seat.held_by === userId && seat.hold_id !== null) {
+        return { ok: true, holdId: seat.hold_id, expiresAt: seat.hold_expires_at! };
+      }
+      return { ok: false, reason: "unavailable" };
+    }
 
     const expiresAt = now + holdMs;
     this.ctx.storage.sql.exec(
@@ -146,7 +154,7 @@ export class SeatShard extends DurableObject<Env> {
     );
 
     await this.rescheduleAlarm();
-    return { ok: true, expiresAt };
+    return { ok: true, holdId, expiresAt };
   }
 
   async confirmBooking(seatId: string, holdId: string, userId: string): Promise<HoldResult> {

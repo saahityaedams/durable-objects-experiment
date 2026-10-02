@@ -100,16 +100,30 @@ export class QueueRoom extends DurableObject<Env> {
     const [existing] = this.ctx.storage.sql
       .exec<QueueEntryRow>("SELECT * FROM entries WHERE user_id = ?", userId)
       .toArray();
-    if (existing) return;
+    const now = Date.now();
+    // An admission whose token has expired is worthless: the seats page rejects
+    // it and sends the user back here. Re-queue them instead of handing the same
+    // dead token out again, which would bounce them between the two pages forever.
+    const admissionExpired =
+      existing?.status === "admitted" &&
+      (existing.admitted_at === null ||
+        existing.admission_token === null ||
+        existing.admitted_at + ADMISSION_TOKEN_TTL_MS < now);
+    if (existing && !admissionExpired) return;
 
     const saleOpensAt = await this.ensureSaleOpensAt();
-    const now = Date.now();
     // Latecomers get a lottery number already, but shifted above 1 so they
     // always sort after the pre-open cohort (assigned in the range [0, 1)).
     const lotteryNumber = now >= saleOpensAt ? 1 + Math.random() : null;
 
     this.ctx.storage.sql.exec(
-      "INSERT INTO entries (user_id, joined_at, lottery_number, status) VALUES (?, ?, ?, 'waiting')",
+      `INSERT INTO entries (user_id, joined_at, lottery_number, status) VALUES (?, ?, ?, 'waiting')
+       ON CONFLICT (user_id) DO UPDATE SET
+         joined_at = excluded.joined_at,
+         lottery_number = excluded.lottery_number,
+         status = 'waiting',
+         admitted_at = NULL,
+         admission_token = NULL`,
       userId,
       now,
       lotteryNumber,

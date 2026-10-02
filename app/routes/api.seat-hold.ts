@@ -8,8 +8,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   const { env } = context.get(cloudflareContext);
 
   if (request.method === "POST") {
-    const body = (await request.json()) as { userId?: string; admissionToken?: string };
-    if (!body.userId || !body.admissionToken) {
+    const body = (await request.json().catch(() => null)) as {
+      userId?: string;
+      admissionToken?: string;
+    } | null;
+    if (!body?.userId || !body.admissionToken) {
       return Response.json({ ok: false, reason: "bad_request" }, { status: 400 });
     }
 
@@ -23,8 +26,11 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
 
   if (request.method === "DELETE") {
-    const body = (await request.json()) as { userId?: string; holdId?: string };
-    if (!body.userId || !body.holdId) {
+    const body = (await request.json().catch(() => null)) as {
+      userId?: string;
+      holdId?: string;
+    } | null;
+    if (!body?.userId || !body.holdId) {
       return Response.json({ ok: false }, { status: 400 });
     }
     await releaseHold(env, eventId, seatId, body.userId, body.holdId);

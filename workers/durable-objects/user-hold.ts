@@ -29,13 +29,20 @@ export class UserHold extends DurableObject<Env> {
     seatId: string,
     expiresAt: number,
     maxHolds: number,
-  ): Promise<{ ok: boolean; activeHolds: number }> {
+  ): Promise<{ ok: boolean; holdId: string; activeHolds: number }> {
     this.pruneExpired();
     const [{ count }] = this.ctx.storage.sql
       .exec<{ count: number }>("SELECT COUNT(*) as count FROM holds")
       .toArray();
 
-    if (count >= maxHolds) return { ok: false, activeHolds: count };
+    // A seat this user already holds reuses its slot rather than taking a
+    // second one (or being refused when they're at the limit).
+    const [existing] = this.ctx.storage.sql
+      .exec<{ hold_id: string }>("SELECT hold_id FROM holds WHERE seat_id = ?", seatId)
+      .toArray();
+    if (existing) return { ok: true, holdId: existing.hold_id, activeHolds: count };
+
+    if (count >= maxHolds) return { ok: false, holdId, activeHolds: count };
 
     this.ctx.storage.sql.exec(
       "INSERT INTO holds (hold_id, seat_id, expires_at) VALUES (?, ?, ?)",
@@ -43,7 +50,7 @@ export class UserHold extends DurableObject<Env> {
       seatId,
       expiresAt,
     );
-    return { ok: true, activeHolds: count + 1 };
+    return { ok: true, holdId, activeHolds: count + 1 };
   }
 
   async release(holdId: string): Promise<void> {
