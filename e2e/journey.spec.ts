@@ -73,12 +73,12 @@ test("Back from the seat map leaves the waiting room instead of bouncing forward
 
   await page.goBack();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "Fair Concert Booking" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Concert booking" })).toBeVisible();
 });
 
-test("'Start your own sale' opens a fresh event with its own countdown", async ({ page }) => {
+test("'Start a sale' opens a fresh event with its own countdown", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("link", { name: /Start your own sale/ }).click();
+  await page.getByRole("link", { name: "Start a sale" }).click();
   await expect(page).toHaveURL(/\/event\/sale-[0-9a-f]{8}$/);
   await expect(page.getByText(/Doors open in \d+s/)).toBeVisible();
   await expect(page.getByText("1 person currently waiting.")).toBeVisible();

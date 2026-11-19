@@ -39,7 +39,6 @@ export function timings(env: object): Timings {
 }
 
 export const DEMO_EVENT_ID = "cf-live-2026";
-export const DEMO_EVENT_NAME = "Cloudflare Live — Workers & Durable Objects Tour";
 
 export function seatIdOf(section: string, row: number, number: number) {
   return `${section}-${row}-${number}`;

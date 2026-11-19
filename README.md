@@ -15,7 +15,7 @@ separate browsers, narrated one step at a time.
 [![Ten fans buying tickets at once](docs/demo-poster.png)](docs/concert-demo.mp4)
 
 **[Try it live →](https://concert-booking.saahitya-e.workers.dev)** Click
-*Start your own sale*, then open the link in a few private windows. Each window
+*Start a sale*, then open the link in a few private windows. Each window
 is a different fan, and the doors open 20 seconds after the first one arrives.
 
 ## What it guarantees
