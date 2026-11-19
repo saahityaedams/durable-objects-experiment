@@ -1,5 +1,7 @@
-import { useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+
+const HOME_AFTER_BOOKING_S = 5;
 import { getOrCreateUserId } from "../lib/user-id";
 
 export default function EventCheckout() {
@@ -10,6 +12,19 @@ export default function EventCheckout() {
   const holdId = searchParams.get("holdId");
   // "expired" is terminal (the hold is gone); "failed" is retryable.
   const [status, setStatus] = useState<"idle" | "paying" | "done" | "expired" | "failed">("idle");
+  const [secondsToHome, setSecondsToHome] = useState(HOME_AFTER_BOOKING_S);
+
+  // After booking, count down and go home. Replace, so Back doesn't return
+  // to a checkout page for a seat that's already paid for.
+  useEffect(() => {
+    if (status !== "done") return;
+    if (secondsToHome <= 0) {
+      navigate("/", { replace: true });
+      return;
+    }
+    const timer = setTimeout(() => setSecondsToHome((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [status, secondsToHome, navigate]);
 
   async function pay() {
     setStatus("paying");
@@ -43,7 +58,13 @@ export default function EventCheckout() {
 
       {status === "done" ? (
         <div className="mt-6 rounded bg-green-100 p-4 text-green-800">
-          Booked! Seat {seatId} is confirmed.
+          <p>Booked! Seat {seatId} is confirmed.</p>
+          <p className="mt-1 text-sm">
+            Taking you home in {secondsToHome}s.{" "}
+            <Link to="/" replace className="underline">
+              Go now
+            </Link>
+          </p>
         </div>
       ) : status === "expired" ? (
         <div className="mt-6 rounded bg-red-100 p-4 text-red-800">

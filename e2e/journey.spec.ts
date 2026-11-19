@@ -34,6 +34,11 @@ test("a visitor queues, gets admitted, holds a seat and books it", async ({ page
 
   const booked = (await listSeats(request, eventId)).find((s) => s.seat_id === "A-2-3");
   expect(booked?.status).toBe("booked");
+
+  // A few seconds later you're sent home, and Back doesn't return to checkout.
+  await expect(page.getByText(/Taking you home in \ds/)).toBeVisible();
+  await page.waitForURL((url) => url.pathname === "/", { timeout: 8_000 });
+  await expect(page.getByRole("heading", { name: "Concert booking" })).toBeVisible();
 });
 
 test("other visitors see a held seat as taken and cannot pick it", async ({ browser }, testInfo) => {
