@@ -1,15 +1,36 @@
 @import "tailwindcss" source(".");
 
+/*
+ * One family (Archivo) on its width axis: condensed for venue signage
+ * (section, row and seat labels, headings), normal width for reading.
+ */
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif,
-    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;
+
+  --color-ink: #18202e;
+  --color-muted: #5b6474;
+  --color-paper: #ffffff;
+  --color-stage: #f6821f; /* yours + the main action; ink text on it */
+  --color-open: #3451c6; /* seats you can take; white text on it */
+  --color-taken: #cbd0d8;
+  --color-alert: #b42318;
+}
+
+@utility condensed {
+  font-stretch: 72%;
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 html,
 body {
-  @apply bg-white dark:bg-gray-950;
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
 
-  @media (prefers-color-scheme: dark) {
-    color-scheme: dark;
-  }
+:focus-visible {
+  outline: 3px solid var(--color-open);
+  outline-offset: 2px;
 }

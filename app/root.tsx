@@ -1,5 +1,6 @@
 import {
   isRouteErrorResponse,
+  Link,
   Links,
   Meta,
   Outlet,
@@ -19,7 +20,7 @@ export const links: Route.LinksFunction = () => [
   },
   {
     rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap",
+    href: "https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap",
   },
 ];
 
@@ -46,27 +47,24 @@ export default function App() {
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
-  let message = "Oops!";
-  let details = "An unexpected error occurred.";
-  let stack: string | undefined;
-
-  if (isRouteErrorResponse(error)) {
-    message = error.status === 404 ? "404" : "Error";
-    details =
-      error.status === 404
-        ? "The requested page could not be found."
-        : error.statusText || details;
-  } else if (import.meta.env.DEV && error && error instanceof Error) {
-    details = error.message;
-    stack = error.stack;
-  }
+  const notFound = isRouteErrorResponse(error) && error.status === 404;
+  const stack = import.meta.env.DEV && error instanceof Error ? error.stack : undefined;
 
   return (
-    <main className="pt-16 p-4 container mx-auto">
-      <h1>{message}</h1>
-      <p>{details}</p>
+    <main className="mx-auto max-w-xl p-8">
+      <h1 className="condensed text-3xl font-bold">
+        {notFound ? "Page not found" : "Something went wrong"}
+      </h1>
+      <p className="mt-2 text-muted">
+        {notFound
+          ? "There's nothing at this address."
+          : "The page hit an error. Going back home usually fixes it."}
+      </p>
+      <Link to="/" className="mt-6 inline-block font-semibold text-open underline">
+        Go home
+      </Link>
       {stack && (
-        <pre className="w-full p-4 overflow-x-auto">
+        <pre className="mt-6 w-full overflow-x-auto text-xs">
           <code>{stack}</code>
         </pre>
       )}

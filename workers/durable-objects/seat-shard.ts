@@ -115,7 +115,10 @@ export class SeatShard extends DurableObject<Env> {
         price: r.price,
         status,
         hold_expires_at: expired ? null : r.hold_expires_at,
-        isMine: viewerId !== undefined && !expired && r.held_by === viewerId,
+        // Yours if you hold it or bought it. Never says who else has a seat.
+        isMine:
+          viewerId !== undefined &&
+          ((!expired && r.held_by === viewerId) || r.booked_by === viewerId),
       };
     });
   }

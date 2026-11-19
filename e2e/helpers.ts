@@ -63,10 +63,20 @@ export async function holdSeat(
   userId: string,
   admissionToken: string,
 ) {
-  const res = await request.post(`/api/events/${eventId}/seats/${seatId}/hold`, {
-    data: { userId, admissionToken },
-  });
-  return { status: res.status(), body: (await res.json()) as { ok: boolean; reason?: string; holdId?: string } };
+  // The local dev server occasionally drops a connection when a stampede
+  // test lands on top of the browser tests. Holding a seat you already hold
+  // is idempotent, so retrying after a transport error is safe; real HTTP
+  // responses are never retried.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await request.post(`/api/events/${eventId}/seats/${seatId}/hold`, {
+        data: { userId, admissionToken },
+      });
+      return { status: res.status(), body: (await res.json()) as { ok: boolean; reason?: string; holdId?: string } };
+    } catch (err) {
+      if (attempt >= 3 || !/ECONNRESET|socket hang up/.test(String(err))) throw err;
+    }
+  }
 }
 
 export async function checkout(

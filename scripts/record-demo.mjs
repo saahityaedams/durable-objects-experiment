@@ -153,7 +153,7 @@ function visitorOverlay() {
     el.shadowRoot.querySelector(".frame").className = `frame ${s.focus || ""}`;
     highlight.replaceSync(
       s.highlight
-        ? `button[title^="${s.highlight} ("]{outline:5px solid #f97316!important;outline-offset:2px;position:relative;z-index:1}`
+        ? `[data-seat="${s.highlight}"]{outline:5px solid #f97316!important;outline-offset:2px;position:relative;z-index:1}`
         : "",
     );
   }
@@ -277,22 +277,22 @@ function highlightSeat(seatId) {
   );
 }
 
-const seatButton = (v, seatId) => v.page.locator(`button[title^="${seatId} ("]`);
+const seatButton = (v, seatId) => v.page.locator(`[data-seat="${seatId}"]`);
 
 /** Clicks a seat; resolves to "won" (reached checkout) or "taken". */
 async function tryHold(v, seatId) {
   await seatButton(v, seatId).click();
   return Promise.race([
     v.page.waitForURL(/\/checkout\?/, { timeout: 15_000 }).then(() => "won"),
-    v.page.getByText(/just taken/).waitFor({ timeout: 15_000 }).then(() => "taken"),
+    v.page.getByText(/just took that seat/).waitFor({ timeout: 15_000 }).then(() => "taken"),
   ]);
 }
 
 async function pay(v, seatId, extra = "") {
   await setBanner(v, `🛒 holding ${seatId}`, "hold");
   await sleep(1800);
-  await v.page.getByRole("button", { name: "Confirm & Pay" }).click();
-  await v.page.getByText("Booked!").waitFor({ timeout: 15_000 });
+  await v.page.getByRole("button", { name: /^Pay \$/ }).click();
+  await v.page.getByText(/^Booked:/).waitFor({ timeout: 15_000 });
   await setBanner(v, `✅ booked ${seatId}${extra}`, "win");
   v.booked = seatId;
   // Back to the live seat map, so every pane shows the venue filling up.
@@ -331,7 +331,7 @@ async function arrive(v) {
     band.turns.push({ label: `V${v.n}`, cls: v.early ? "early" : "late" });
     await setBanner(v, `🎟 your turn (#${v.turn})`, "admit");
     log(`V${v.n} gets turn #${v.turn}`);
-    await v.page.locator("button[title$='(available)']").first().waitFor();
+    await v.page.locator('[data-status="available"]').first().waitFor();
     turn(v.turn);
     byTurn.get(v.turn).resolve(v);
     return v;
@@ -456,7 +456,7 @@ async function direct() {
   await finalist.admitted;
   await setBanner(finalist, `🎟 your turn · waiting for ${ABANDONED_SEAT}`, "admit");
   await finalist.page
-    .locator(`button[title="${ABANDONED_SEAT} (available)"]`)
+    .locator(`[data-seat="${ABANDONED_SEAT}"][data-status="available"]`)
     .waitFor({ timeout: (HOLD_S + 60) * 1000 });
 
   // 7 · the hold expires

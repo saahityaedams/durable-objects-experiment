@@ -19,8 +19,8 @@ export default function Home() {
   const { freshEventId } = useLoaderData<typeof loader>();
   return (
     <main className="mx-auto max-w-xl p-8">
-      <h1 className="text-3xl font-bold">Concert booking</h1>
-      <p className="mt-3 text-gray-600">
+      <h1 className="condensed text-5xl font-bold">Concert booking</h1>
+      <p className="mt-3 text-lg text-muted">
         A ticket sale on Cloudflare Workers and Durable Objects. Wait in line, get a few minutes to
         pick your seats, then pay.
       </p>
@@ -28,24 +28,24 @@ export default function Home() {
       <div className="mt-6 flex flex-wrap gap-3">
         <Link
           to={`/event/${freshEventId}`}
-          className="rounded bg-orange-600 px-4 py-2 font-semibold text-white hover:bg-orange-700"
+          className="rounded-md bg-stage px-5 py-2.5 font-bold text-ink hover:bg-[#e47212]"
         >
           Start a sale
         </Link>
         <Link
           to={`/event/${DEMO_EVENT_ID}`}
-          className="rounded border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50"
+          className="rounded-md border-2 border-ink px-5 py-2 font-bold hover:bg-ink hover:text-white"
         >
           Join the shared sale
         </Link>
       </div>
-      <p className="mt-3 text-sm text-gray-500">
+      <p className="mt-4 text-muted">
         Doors open 20 seconds after the first person arrives. To try it with more than one person,
         open the link in a few private windows.
       </p>
 
       <p className="mt-10 text-sm">
-        <a className="text-gray-500 underline" href={REPO_URL}>
+        <a className="text-muted underline" href={REPO_URL}>
           Source on GitHub
         </a>
       </p>

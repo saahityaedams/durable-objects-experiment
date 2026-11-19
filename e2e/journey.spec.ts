@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { freshEventId, listSeats, TEST_TIMINGS } from "./helpers";
 
-const seat = (page: Page, seatId: string) => page.locator(`button[title^="${seatId} ("]`);
+const seat = (page: Page, seatId: string) => page.locator(`[data-seat="${seatId}"]`);
 
 /** Route sequence of the main frame, as "queue" / "seats" steps. */
 function trackRoutes(page: Page) {
@@ -21,16 +21,16 @@ test("a visitor queues, gets admitted, holds a seat and books it", async ({ page
 
   await expect(page.getByRole("heading", { name: "You're in line" })).toBeVisible();
   await expect(page.getByText(/Doors open in \d+s/)).toBeVisible();
-  await expect(page.getByText("Your position will be assigned once doors open.")).toBeVisible();
+  await expect(page.getByText(/random place in line/)).toBeVisible();
 
   await page.waitForURL(`**/event/${eventId}/seats?token=*`, { timeout: 30_000 });
-  await expect(page.getByRole("heading", { name: "Pick your seat" })).toBeVisible();
-  await expect(page.locator("button[title$='(available)']")).toHaveCount(64);
+  await expect(page.getByRole("heading", { name: "Pick a seat" })).toBeVisible();
+  await expect(page.locator('[data-status="available"]')).toHaveCount(64);
 
   await seat(page, "A-2-3").click();
   await page.waitForURL(`**/event/${eventId}/checkout?seatId=A-2-3&holdId=*`);
-  await page.getByRole("button", { name: "Confirm & Pay" }).click();
-  await expect(page.getByText("Booked! Seat A-2-3 is confirmed.")).toBeVisible();
+  await page.getByRole("button", { name: "Pay $180" }).click();
+  await expect(page.getByText("Booked: section A, row 2, seat 3.")).toBeVisible();
 
   const booked = (await listSeats(request, eventId)).find((s) => s.seat_id === "A-2-3");
   expect(booked?.status).toBe("booked");
@@ -56,7 +56,7 @@ test("other visitors see a held seat as taken and cannot pick it", async ({ brow
   await alice.waitForURL("**/checkout?*");
 
   // Bob's map polls every 3s; the seat flips to held and is disabled.
-  await expect(seat(bob, "B-1-1")).toHaveAttribute("title", "B-1-1 (held)", { timeout: 8_000 });
+  await expect(seat(bob, "B-1-1")).toHaveAttribute("data-status", "held", { timeout: 8_000 });
   await expect(seat(bob, "B-1-1")).toBeDisabled();
 });
 
@@ -66,7 +66,7 @@ test("refreshing the seat map keeps you on it", async ({ page }, testInfo) => {
   await page.waitForURL("**/seats?token=*", { timeout: 30_000 });
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Pick your seat" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pick a seat" })).toBeVisible();
   await expect(page).toHaveURL(/\/seats\?token=/);
 });
 
@@ -86,7 +86,7 @@ test("'Start a sale' opens a fresh event with its own countdown", async ({ page 
   await page.getByRole("link", { name: "Start a sale" }).click();
   await expect(page).toHaveURL(/\/event\/sale-[0-9a-f]{8}$/);
   await expect(page.getByText(/Doors open in \d+s/)).toBeVisible();
-  await expect(page.getByText("1 person currently waiting.")).toBeVisible();
+  await expect(page.getByText("1 person waiting.")).toBeVisible();
 });
 
 /**
@@ -111,7 +111,7 @@ test("returning after your admission expired re-queues you instead of looping", 
 
   expect(new URL(page.url()).searchParams.get("token")).not.toBe(firstToken);
   expect(routes).toEqual(["queue", "seats"]);
-  await expect(page.getByRole("heading", { name: "Pick your seat" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pick a seat" })).toBeVisible();
 });
 
 test("opening the seat map with an expired token sends you back to queue once", async ({ page }, testInfo) => {
