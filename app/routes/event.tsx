@@ -11,6 +11,8 @@ interface QueueStatus {
   admissionExpiresAt: number | null;
 }
 
+const people = (n: number) => `${n} ${n === 1 ? "person" : "people"}`;
+
 export default function EventQueue() {
   const { eventId } = useParams();
   const navigate = useNavigate();
@@ -48,9 +50,15 @@ export default function EventQueue() {
   }, [eventId]);
 
   useEffect(() => {
-    if (status?.status === "admitted" && status.admissionToken) {
-      navigate(`/event/${eventId}/seats?token=${encodeURIComponent(status.admissionToken)}`);
-    }
+    if (status?.status !== "admitted" || !status.admissionToken) return;
+    // Don't follow a token that is about to expire: the seats page would reject
+    // it and send us straight back here. Keep polling until the queue re-queues
+    // us instead.
+    if (status.admissionExpiresAt !== null && status.admissionExpiresAt < Date.now() + 2000) return;
+    // Replace, so Back from the seat map doesn't land here and bounce forward.
+    navigate(`/event/${eventId}/seats?token=${encodeURIComponent(status.admissionToken)}`, {
+      replace: true,
+    });
   }, [status, eventId, navigate]);
 
   if (!status) {
@@ -76,9 +84,9 @@ export default function EventQueue() {
             ? "Your position will be assigned once doors open."
             : status.waitingAhead === 0
               ? "You're next!"
-              : `${status.waitingAhead} people ahead of you.`}
+              : `${people(status.waitingAhead)} ahead of you.`}
         </p>
-        <p className="text-sm text-gray-500">{status.waitingTotal} people currently waiting.</p>
+        <p className="text-sm text-gray-500">{people(status.waitingTotal)} currently waiting.</p>
       </div>
     </main>
   );

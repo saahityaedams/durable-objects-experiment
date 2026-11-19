@@ -17,6 +17,12 @@ export interface SeatRow {
   booked_by: string | null;
 }
 
+/**
+ * What any visitor may see about a seat. Deliberately has no user ids: they
+ * act as credentials here (the queue hands an admission token to whoever
+ * presents a user id), so leaking them would let anyone take over another
+ * person's turn.
+ */
 export interface SeatView {
   seat_id: string;
   section: string;
@@ -24,10 +30,8 @@ export interface SeatView {
   number: number;
   price: number;
   status: SeatStatus;
-  held_by: string | null;
   hold_expires_at: number | null;
-  booked_by: string | null;
-  isMine?: boolean;
+  isMine: boolean;
 }
 
 interface HoldResult {
@@ -110,10 +114,8 @@ export class SeatShard extends DurableObject<Env> {
         number: r.number,
         price: r.price,
         status,
-        held_by: expired ? null : r.held_by,
         hold_expires_at: expired ? null : r.hold_expires_at,
-        booked_by: r.booked_by,
-        isMine: !expired && r.held_by === viewerId,
+        isMine: viewerId !== undefined && !expired && r.held_by === viewerId,
       };
     });
   }

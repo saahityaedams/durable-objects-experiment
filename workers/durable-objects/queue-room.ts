@@ -1,11 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { mintAdmissionToken } from "../lib/admission-token";
-import {
-  ADMISSION_TOKEN_TTL_MS,
-  QUEUE_BATCH_SIZE,
-  QUEUE_TICK_MS,
-  QUEUE_WARMUP_MS,
-} from "../lib/config";
+import { timings } from "../lib/config";
 
 interface QueueEntryRow {
   [column: string]: SqlStorageValue;
@@ -36,6 +31,7 @@ export interface QueueStatus {
  */
 export class QueueRoom extends DurableObject<Env> {
   private eventId: string | null = null;
+  private readonly t = timings(this.env);
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -90,7 +86,7 @@ export class QueueRoom extends DurableObject<Env> {
   private async ensureSaleOpensAt(): Promise<number> {
     let saleOpensAt = await this.ctx.storage.get<number>("saleOpensAt");
     if (!saleOpensAt) {
-      saleOpensAt = Date.now() + QUEUE_WARMUP_MS;
+      saleOpensAt = Date.now() + this.t.queueWarmupMs;
       await this.ctx.storage.put("saleOpensAt", saleOpensAt);
     }
     return saleOpensAt;
@@ -108,13 +104,15 @@ export class QueueRoom extends DurableObject<Env> {
       existing?.status === "admitted" &&
       (existing.admitted_at === null ||
         existing.admission_token === null ||
-        existing.admitted_at + ADMISSION_TOKEN_TTL_MS < now);
+        existing.admitted_at + this.t.admissionTtlMs < now);
     if (existing && !admissionExpired) return;
 
     const saleOpensAt = await this.ensureSaleOpensAt();
-    // Latecomers get a lottery number already, but shifted above 1 so they
-    // always sort after the pre-open cohort (assigned in the range [0, 1)).
-    const lotteryNumber = now >= saleOpensAt ? 1 + Math.random() : null;
+    // The pre-open cohort is shuffled at open into [0, 1). Anyone joining after
+    // open queues behind all of them in arrival order: 1 + join time sorts
+    // above every cohort number and keeps first-come-first-served among
+    // latecomers (a random number here let later arrivals jump ahead).
+    const lotteryNumber = now >= saleOpensAt ? 1 + now : null;
 
     this.ctx.storage.sql.exec(
       `INSERT INTO entries (user_id, joined_at, lottery_number, status) VALUES (?, ?, ?, 'waiting')
@@ -133,7 +131,7 @@ export class QueueRoom extends DurableObject<Env> {
   private async ensureTicking(): Promise<void> {
     const current = await this.ctx.storage.getAlarm();
     if (current === null) {
-      await this.ctx.storage.setAlarm(Date.now() + QUEUE_TICK_MS);
+      await this.ctx.storage.setAlarm(Date.now() + this.t.queueTickMs);
     }
   }
 
@@ -174,7 +172,7 @@ export class QueueRoom extends DurableObject<Env> {
       waitingAhead: 0,
       waitingTotal,
       admissionToken: me.admission_token,
-      admissionExpiresAt: me.admitted_at ? me.admitted_at + ADMISSION_TOKEN_TTL_MS : null,
+      admissionExpiresAt: me.admitted_at ? me.admitted_at + this.t.admissionTtlMs : null,
     };
   }
 
@@ -193,6 +191,50 @@ export class QueueRoom extends DurableObject<Env> {
     }
   }
 
+  /**
+   * Pushes fresh status to every connected waiting room. Places in line come
+   * from one ranking query per tick rather than per-socket counts, so a tick
+   * stays O(n log n) in the number of people waiting.
+   */
+  private async broadcastStatus(): Promise<void> {
+    const sockets = this.ctx.getWebSockets();
+    if (sockets.length === 0) return;
+
+    const saleOpensAt = await this.ensureSaleOpensAt();
+    const ranked = this.ctx.storage.sql
+      .exec<{ user_id: string; ahead: number | null }>(
+        `SELECT user_id,
+                CASE WHEN lottery_number IS NULL THEN NULL
+                     ELSE ROW_NUMBER() OVER (PARTITION BY lottery_number IS NULL
+                                             ORDER BY lottery_number, joined_at) - 1
+                END AS ahead
+         FROM entries WHERE status = 'waiting'`,
+      )
+      .toArray();
+    const aheadOf = new Map(ranked.map((r) => [r.user_id, r.ahead]));
+    const waitingTotal = ranked.length;
+
+    for (const ws of sockets) {
+      const [userId] = this.ctx.getTags(ws);
+      if (!userId) continue;
+      const status: QueueStatus = aheadOf.has(userId)
+        ? {
+            status: "waiting",
+            saleOpensAt,
+            waitingAhead: aheadOf.get(userId) ?? null,
+            waitingTotal,
+            admissionToken: null,
+            admissionExpiresAt: null,
+          }
+        : await this.buildStatus(userId); // admitted: rare, and cheap per user
+      try {
+        ws.send(JSON.stringify(status));
+      } catch {
+        // Socket closed mid-tick; the browser falls back to polling.
+      }
+    }
+  }
+
   async alarm(): Promise<void> {
     const saleOpensAt = await this.ensureSaleOpensAt();
     await this.assignLotteryIfOpen(saleOpensAt);
@@ -203,9 +245,9 @@ export class QueueRoom extends DurableObject<Env> {
         .exec<QueueEntryRow>(
           `SELECT * FROM entries
            WHERE status = 'waiting' AND lottery_number IS NOT NULL
-           ORDER BY lottery_number ASC
+           ORDER BY lottery_number ASC, joined_at ASC
            LIMIT ?`,
-          QUEUE_BATCH_SIZE,
+          this.t.queueBatchSize,
         )
         .toArray();
 
@@ -213,7 +255,7 @@ export class QueueRoom extends DurableObject<Env> {
         const now = Date.now();
         const token = eventId
           ? await mintAdmissionToken(
-              { eventId, userId: entry.user_id, exp: now + ADMISSION_TOKEN_TTL_MS },
+              { eventId, userId: entry.user_id, exp: now + this.t.admissionTtlMs },
               this.env.ADMISSION_TOKEN_SECRET,
             )
           : null;
@@ -224,19 +266,20 @@ export class QueueRoom extends DurableObject<Env> {
           token,
           entry.user_id,
         );
-
-        for (const ws of this.ctx.getWebSockets(entry.user_id)) {
-          ws.send(JSON.stringify(await this.buildStatus(entry.user_id)));
-        }
       }
     }
+
+    // Every tick can change everyone's place in line (the draw at doors-open,
+    // each admission), so push fresh status to every connected waiting room,
+    // not just to the people admitted. Hibernated sockets wake for this.
+    await this.broadcastStatus();
 
     const [{ count: stillWaiting }] = this.ctx.storage.sql
       .exec<{ count: number }>("SELECT COUNT(*) as count FROM entries WHERE status = 'waiting'")
       .toArray();
 
     if (stillWaiting > 0 || Date.now() < saleOpensAt) {
-      await this.ctx.storage.setAlarm(Date.now() + QUEUE_TICK_MS);
+      await this.ctx.storage.setAlarm(Date.now() + this.t.queueTickMs);
     }
   }
 }

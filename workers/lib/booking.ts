@@ -1,5 +1,5 @@
 import type { SeatView } from "../durable-objects/seat-shard";
-import { MAX_HOLDS_PER_USER, HOLD_DURATION_MS, SECTIONS, sectionOf } from "./config";
+import { MAX_HOLDS_PER_USER, SECTIONS, sectionOf, timings } from "./config";
 
 function shardFor(env: Env, eventId: string, section: string) {
   return env.SEAT_SHARD.getByName(`${eventId}:section:${section}`);
@@ -46,7 +46,8 @@ export async function holdSeat(
   userId: string,
 ): Promise<HoldOutcome> {
   const section = sectionOf(seatId);
-  const expiresAt = Date.now() + HOLD_DURATION_MS;
+  const holdDurationMs = timings(env).holdDurationMs;
+  const expiresAt = Date.now() + holdDurationMs;
 
   const userHold = userHoldFor(env, eventId, userId);
   const reserved = await userHold.tryReserve(
@@ -59,12 +60,15 @@ export async function holdSeat(
   // Either the fresh id, or the id of a hold this user already has on the seat.
   const holdId = reserved.holdId;
 
-  const seatResult = await shardFor(env, eventId, section).holdSeat(
-    seatId,
-    userId,
-    holdId,
-    HOLD_DURATION_MS,
-  );
+  const shard = shardFor(env, eventId, section);
+  let seatResult = await shard.holdSeat(seatId, userId, holdId, holdDurationMs);
+  if (!seatResult.ok && seatResult.reason === "not_found") {
+    // Inventory is created lazily on first read; a hold can arrive before
+    // anyone has opened the seat map (e.g. right after a deploy). Seeding is
+    // idempotent, so seed and retry once; a genuinely bad seat id still fails.
+    await ensureEventSeeded(env, eventId);
+    seatResult = await shard.holdSeat(seatId, userId, holdId, holdDurationMs);
+  }
 
   if (!seatResult.ok) {
     await userHold.release(holdId);
