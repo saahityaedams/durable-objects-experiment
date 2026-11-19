@@ -78,7 +78,3 @@ npm run deploy
 
 `.npmrc` stops npm installing package versions published in the last 7 days.
 `npm run check:deps` checks the versions already in `package-lock.json`.
-
-## License
-
-MIT
