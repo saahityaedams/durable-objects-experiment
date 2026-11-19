@@ -107,7 +107,8 @@ async function warmUp(browser) {
  */
 function visitorOverlay() {
   const base = new CSSStyleSheet();
-  base.replaceSync("body{zoom:.85;padding-top:56px}");
+  // Zoom out so the whole venue fits a pane; pad below the (unzoomed) banner.
+  base.replaceSync("body{zoom:.66;padding-top:86px}");
   const highlight = new CSSStyleSheet();
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, base, highlight];
 
